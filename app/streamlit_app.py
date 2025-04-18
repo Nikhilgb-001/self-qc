@@ -122,16 +122,19 @@
 #         "QC_Results.xlsx",
 #         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 #     )
-
 import streamlit as st
 import pandas as pd
 from docx import Document
 from io import BytesIO
 import re
+from openpyxl.utils import get_column_letter
 from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
+from openpyxl.styles import PatternFill, Font
 
-# Function to extract fields from Word Document
+# Set Streamlit page config
+st.set_page_config(page_title="Self-QC Automation", layout="wide")
+
+# Function to extract fields from docx
 def extract_fields_from_docx(file, fields):
     text = ""
     doc = Document(file)
@@ -139,98 +142,101 @@ def extract_fields_from_docx(file, fields):
         text += p.text + "\n"
     for table in doc.tables:
         for row in table.rows:
-            text += "\t".join(cell.text for cell in row.cells) + "\n"
-    out = {}
-    for f in fields:
-        m = re.search(re.escape(f) + r"\s*[:\-]\s*(.+)", text, re.IGNORECASE)
-        out[f] = m.group(1).strip() if m else ""
-    return out
+            text += "\t".join(cell.text.strip() for cell in row.cells) + "\n"
+    extracted = {}
+    for field in fields:
+        pattern = re.escape(field) + r"\s*[:\-]\s*(.+)"
+        match = re.search(pattern, text, re.IGNORECASE)
+        extracted[field] = match.group(1).strip() if match else ""
+    return extracted
 
-# Streamlit UI
-st.title("Self-QC Automation")
+# Title and UI enhancements
+st.title("🔎 Self-QC Automation")
+st.markdown("""
+Upload your **Agreement (.docx)** and the **Excel Checklist (.xlsx)** to automatically extract and verify key data.
+""")
 
-# File uploaders
-docx_file = st.file_uploader("📄 Upload Agreement (.docx)", type=["docx"])
-excel_file = st.file_uploader("📑 Upload Checklist (.xlsx)", type=["xlsx"])
+# File uploaders in columns
+col1, col2 = st.columns(2)
+
+with col1:
+    docx_file = st.file_uploader("📄 **Upload Agreement (.docx)**", type=["docx"])
+with col2:
+    excel_file = st.file_uploader("📑 **Upload Checklist (.xlsx)**", type=["xlsx"])
 
 if docx_file and excel_file:
-    workbook = pd.ExcelFile(excel_file, engine="openpyxl")
-    output_sheets = {}
+    excel = pd.ExcelFile(excel_file, engine="openpyxl")
 
-    # Iterate through sheets except "Notification Email"
-    for sheet_name in workbook.sheet_names:
-        if sheet_name.lower() == "notification email":
-            continue  # skip email sheet
+    all_fields = set()
 
-        df = workbook.parse(sheet_name)
+    # Process all sheets except 'Notification Email'
+    for sheet in excel.sheet_names:
+        if sheet.lower() != "notification email":
+            df = excel.parse(sheet)
+            if {"Field", "Status"}.issubset(df.columns):
+                active_fields = df[df["Status"] == True]["Field"].dropna().astype(str).tolist()
+                all_fields.update(active_fields)
 
-        # Check necessary columns exist
-        required_cols = ["Field", "Status", "Manual Value"]
-        if not all(col in df.columns for col in required_cols):
-            st.error(f"Sheet '{sheet_name}' missing required columns.")
-            continue
+    fields = sorted(all_fields)
+    extracted_data = extract_fields_from_docx(docx_file, fields)
 
-        # Get active fields
-        active_df = df[df["Status"] == True].copy()
-        fields = active_df["Field"].dropna().astype(str).tolist()
+    # Create final simplified DataFrame
+    final_df = pd.DataFrame({
+        "Field Name": fields,
+        "Extracted Value": [extracted_data.get(field, "") for field in fields]
+    })
 
-        # Extract data from Word
-        extracted_values = extract_fields_from_docx(docx_file, fields)
+    # Display the DataFrame with improved styling
+    st.subheader("📝 **Extracted QC Results**")
+    st.dataframe(final_df, use_container_width=True)
 
-        # Map extracted values back to DataFrame
-        active_df["Auto Extracted Value"] = active_df["Field"].map(extracted_values)
-
-        # Compare manual and auto-extracted values
-        active_df["Match"] = active_df.apply(
-            lambda row: str(row["Manual Value"]).strip().lower() == str(row["Auto Extracted Value"]).strip().lower(),
-            axis=1,
-        )
-
-        # Store result for each sheet
-        output_sheets[sheet_name] = active_df
-
-        # Display results for each sheet
-        st.subheader(f"Sheet: {sheet_name}")
-        st.dataframe(active_df[["Field", "Manual Value", "Auto Extracted Value", "Match"]], width=900)
-
-    # Prepare final Excel file with highlighting
+    # Prepare well-formatted Excel download with highlighting for empty values
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        for sheet_name, df_sheet in output_sheets.items():
-            df_sheet.to_excel(writer, index=False, sheet_name=sheet_name)
+        final_df.to_excel(writer, index=False, sheet_name="QC Results")
+
+        # Access worksheet for styling
+        worksheet = writer.sheets["QC Results"]
+
+        # Define styles
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F81BD", fill_type="solid")
+        missing_fill = PatternFill(start_color="FFC7CE", fill_type="solid")
+
+        # Style headers
+        for col_num, column_title in enumerate(final_df.columns, start=1):
+            cell = worksheet.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+
+        # Adjust column widths automatically and highlight missing values
+        for idx, col in enumerate(final_df.columns, start=1):
+            max_len = max(final_df[col].astype(str).map(len).max(), len(col)) + 4
+            worksheet.column_dimensions[get_column_letter(idx)].width = max_len
+
+            # Highlight empty extracted values
+            if col == "Extracted Value":
+                for row_num, cell_value in enumerate(final_df[col], start=2):
+                    if not cell_value:
+                        worksheet.cell(row=row_num, column=idx).fill = missing_fill
 
     buf.seek(0)
-    wb = load_workbook(buf)
 
-    # Highlight mismatches
-    mismatch_fill = PatternFill(start_color="FF9999", end_color="FF9999", fill_type="solid")
-
-    for sheet_name in output_sheets:
-        ws = wb[sheet_name]
-        header = [cell.value for cell in ws[1]]
-
-        match_col_idx = header.index("Match") + 1  # Excel is 1-indexed
-
-        for row in range(2, ws.max_row + 1):
-            match_cell = ws.cell(row=row, column=match_col_idx)
-            if match_cell.value == False:
-                for col_idx in range(1, ws.max_column + 1):
-                    ws.cell(row=row, column=col_idx).fill = mismatch_fill
-
-        # Adjust column widths for readability
-        for col_cells in ws.columns:
-            max_length = max(len(str(cell.value or "")) for cell in col_cells) + 2
-            ws.column_dimensions[col_cells[0].column_letter].width = max_length
-
-    final_buf = BytesIO()
-    wb.save(final_buf)
-    final_buf.seek(0)
-
-    # Final Download button
+    # Download button clearly placed
     st.download_button(
-        "📥 Download QC Results (with Mismatches Highlighted)",
-        final_buf.getvalue(),
-        "QC_Results_Highlighted.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        label="📥 **Download QC Results Excel**",
+        data=buf.getvalue(),
+        file_name="QC_Results.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+    # Instructions clearly stated
+    st.info("""
+    📌 **Note**:
+    - The final Excel clearly shows extracted values from the Word document.
+    - Fields without extracted values (not found in the Word document) are **highlighted in red**.
+    """)
+
+else:
+    st.warning("👆 Please upload both Agreement (.docx) and Checklist (.xlsx) files to proceed.")
 
