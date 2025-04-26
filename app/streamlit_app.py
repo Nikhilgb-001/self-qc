@@ -240,6 +240,123 @@
 # else:
 #     st.warning("👆 Please upload both Agreement (.docx) and Checklist (.xlsx) files to proceed.")
 
+# import streamlit as st // Worked 
+# import pandas as pd
+# from docx import Document
+# from io import BytesIO
+# import re
+# from openpyxl import load_workbook
+
+# # Set Streamlit config
+# st.set_page_config(page_title="Self-QC Automation - Final Fixed", layout="wide")
+
+# # Proper normalization function
+# def normalize(text):
+#     if text is None:
+#         return ""
+#     return re.sub(r'\s+', ' ', str(text)).strip().lower()
+
+# # Read fields from Word Table only
+# def extract_fields_from_word(file):
+#     doc = Document(file)
+#     extracted = {}
+#     for table in doc.tables:
+#         for row in table.rows:
+#             if len(row.cells) >= 2:
+#                 field = row.cells[0].text.strip()
+#                 value = row.cells[1].text.strip()
+#                 if field:
+#                     extracted[normalize(field)] = value
+#     return extracted
+
+# # Streamlit UI
+# st.title("🔎 Self-QC Automation (Final Fix - Accurate Match)")
+
+# col1, col2 = st.columns(2)
+
+# with col1:
+#     docx_file = st.file_uploader("📄 Upload Word Agreement (.docx)", type=["docx"])
+# with col2:
+#     excel_file = st.file_uploader("📑 Upload Excel Checklist (.xlsx)", type=["xlsx"])
+
+# if docx_file and excel_file:
+#     # Step 1: Extract fields from Word
+#     word_data = extract_fields_from_word(docx_file)
+
+#     # Step 2: Read Excel
+#     output = BytesIO()
+#     output.write(excel_file.read())
+#     output.seek(0)
+#     workbook = load_workbook(output)
+
+#     preview_rows = []
+
+#     # Step 3: Try matching across sheets
+#     for sheet_name in workbook.sheetnames:
+#         if sheet_name.lower() == "notification email":
+#             continue
+
+#         ws = workbook[sheet_name]
+#         headers = [cell.value for cell in ws[1]]
+
+#         if "Field" in headers and "Manual Value" in headers:
+#             field_col_idx = headers.index("Field") + 1
+#             manual_val_col_idx = headers.index("Manual Value") + 1
+
+#             for row in range(2, ws.max_row + 1):
+#                 field_cell = ws.cell(row=row, column=field_col_idx)
+#                 manual_cell = ws.cell(row=row, column=manual_val_col_idx)
+
+#                 if field_cell.value:
+#                     normalized_field_excel = normalize(field_cell.value)
+
+#                     if normalized_field_excel in word_data:
+#                         preview_rows.append({
+#                             "Sheet Name": sheet_name,
+#                             "Field Name": field_cell.value,
+#                             "Old Manual Value": manual_cell.value if manual_cell.value else "",
+#                             "New Extracted Value": word_data[normalized_field_excel]
+#                         })
+
+#     # Step 4: Preview
+#     if preview_rows:
+#         st.success(f"✅ Found {len(preview_rows)} matching fields!")
+
+#         preview_df = pd.DataFrame(preview_rows)
+#         st.dataframe(preview_df, use_container_width=True)
+
+#         if st.button("🚀 Apply Changes and Download Updated Excel"):
+#             for match in preview_rows:
+#                 ws = workbook[match["Sheet Name"]]
+#                 headers = [cell.value for cell in ws[1]]
+#                 field_col_idx = headers.index("Field") + 1
+#                 manual_val_col_idx = headers.index("Manual Value") + 1
+
+#                 for row in range(2, ws.max_row + 1):
+#                     field_cell = ws.cell(row=row, column=field_col_idx)
+#                     if field_cell.value and normalize(field_cell.value) == normalize(match["Field Name"]):
+#                         manual_cell = ws.cell(row=row, column=manual_val_col_idx)
+#                         manual_cell.value = match["New Extracted Value"]
+#                         break
+
+#             final_output = BytesIO()
+#             workbook.save(final_output)
+#             final_output.seek(0)
+
+#             st.download_button(
+#                 label="📥 Download Updated Excel",
+#                 data=final_output.getvalue(),
+#                 file_name="Updated_Checklist.xlsx",
+#                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+#             )
+
+#     else:
+#         st.warning("⚠️ No matching fields found. Please verify Field Names exactly match.")
+
+# else:
+#     st.warning("👆 Please upload both Word (.docx) and Excel (.xlsx) files to proceed.")
+
+
 import streamlit as st
 import pandas as pd
 from docx import Document
@@ -250,13 +367,13 @@ from openpyxl import load_workbook
 # Set Streamlit config
 st.set_page_config(page_title="Self-QC Automation - Final Fixed", layout="wide")
 
-# Proper normalization function
+# Normalize function
 def normalize(text):
     if text is None:
         return ""
-    return re.sub(r'\s+', ' ', str(text)).strip().lower()
+    return re.sub(r'\s+', ' ', str(text)).strip().lower().replace("\u200b", "").replace("\xa0", " ")
 
-# Read fields from Word Table only
+# Read Word fields only from TABLE
 def extract_fields_from_word(file):
     doc = Document(file)
     extracted = {}
@@ -270,8 +387,10 @@ def extract_fields_from_word(file):
     return extracted
 
 # Streamlit UI
-st.title("🔎 Self-QC Automation (Final Fix - Accurate Match)")
+st.title("🔎 Self-QC Automation (Handles Dirty Headers & Word Tables)")
+st.markdown("Upload your **Word (.docx)** and **Excel (.xlsx)**. Matching fields will be shown before updating Excel.")
 
+# File upload
 col1, col2 = st.columns(2)
 
 with col1:
@@ -280,10 +399,9 @@ with col2:
     excel_file = st.file_uploader("📑 Upload Excel Checklist (.xlsx)", type=["xlsx"])
 
 if docx_file and excel_file:
-    # Step 1: Extract fields from Word
     word_data = extract_fields_from_word(docx_file)
 
-    # Step 2: Read Excel
+    # Load Excel file
     output = BytesIO()
     output.write(excel_file.read())
     output.seek(0)
@@ -291,7 +409,7 @@ if docx_file and excel_file:
 
     preview_rows = []
 
-    # Step 3: Try matching across sheets
+    # Process each sheet
     for sheet_name in workbook.sheetnames:
         if sheet_name.lower() == "notification email":
             continue
@@ -299,13 +417,22 @@ if docx_file and excel_file:
         ws = workbook[sheet_name]
         headers = [cell.value for cell in ws[1]]
 
-        if "Field" in headers and "Manual Value" in headers:
-            field_col_idx = headers.index("Field") + 1
-            manual_val_col_idx = headers.index("Manual Value") + 1
+        # Clean headers dynamically
+        clean_headers = [normalize(h) for h in headers]
 
+        field_col_idx = None
+        value_col_idx = None
+
+        for idx, header in enumerate(clean_headers):
+            if "fieldname" in header or header == "field":
+                field_col_idx = idx + 1
+            elif "value" in header:
+                value_col_idx = idx + 1
+
+        if field_col_idx and value_col_idx:
             for row in range(2, ws.max_row + 1):
                 field_cell = ws.cell(row=row, column=field_col_idx)
-                manual_cell = ws.cell(row=row, column=manual_val_col_idx)
+                manual_cell = ws.cell(row=row, column=value_col_idx)
 
                 if field_cell.value:
                     normalized_field_excel = normalize(field_cell.value)
@@ -318,7 +445,7 @@ if docx_file and excel_file:
                             "New Extracted Value": word_data[normalized_field_excel]
                         })
 
-    # Step 4: Preview
+    # Show preview
     if preview_rows:
         st.success(f"✅ Found {len(preview_rows)} matching fields!")
 
@@ -329,13 +456,21 @@ if docx_file and excel_file:
             for match in preview_rows:
                 ws = workbook[match["Sheet Name"]]
                 headers = [cell.value for cell in ws[1]]
-                field_col_idx = headers.index("Field") + 1
-                manual_val_col_idx = headers.index("Manual Value") + 1
+                clean_headers = [normalize(h) for h in headers]
+
+                field_col_idx = None
+                value_col_idx = None
+
+                for idx, header in enumerate(clean_headers):
+                    if "fieldname" in header or header == "field":
+                        field_col_idx = idx + 1
+                    elif "value" in header:
+                        value_col_idx = idx + 1
 
                 for row in range(2, ws.max_row + 1):
                     field_cell = ws.cell(row=row, column=field_col_idx)
                     if field_cell.value and normalize(field_cell.value) == normalize(match["Field Name"]):
-                        manual_cell = ws.cell(row=row, column=manual_val_col_idx)
+                        manual_cell = ws.cell(row=row, column=value_col_idx)
                         manual_cell.value = match["New Extracted Value"]
                         break
 
@@ -351,7 +486,8 @@ if docx_file and excel_file:
             )
 
     else:
-        st.warning("⚠️ No matching fields found. Please verify Field Names exactly match.")
+        st.warning("⚠️ No matching fields found after checking Word Table and Excel.")
 
 else:
     st.warning("👆 Please upload both Word (.docx) and Excel (.xlsx) files to proceed.")
+
