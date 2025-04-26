@@ -239,6 +239,7 @@
 
 # else:
 #     st.warning("👆 Please upload both Agreement (.docx) and Checklist (.xlsx) files to proceed.")
+
 import streamlit as st
 import pandas as pd
 from docx import Document
@@ -247,6 +248,7 @@ import re
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
 
+# Set Streamlit page config
 st.set_page_config(page_title="Self-QC Automation with Preview", layout="wide")
 
 # Function to extract fields from Word document
@@ -268,6 +270,12 @@ def extract_fields_from_word(file):
             parts = line.split("-", 1)
             extracted[parts[0].strip()] = parts[1].strip()
     return extracted
+
+# Function to normalize text (to match correctly)
+def normalize(text):
+    if text is None:
+        return ""
+    return str(text).strip().lower().replace("\u200b", "").replace("\xa0", " ")
 
 # UI
 st.title("🔎 Self-QC Automation (Preview Matching Fields Before Download)")
@@ -319,13 +327,15 @@ if docx_file and excel_file:
 
                     if field_cell.value:
                         field_name = str(field_cell.value).strip()
-                        if field_name in word_data:
-                            preview_rows.append({
-                                "Sheet Name": sheet_name,
-                                "Field Name": field_name,
-                                "Old Value": value_cell.value if value_cell.value else "",
-                                "New Extracted Value": word_data[field_name]
-                            })
+                        for word_field, word_value in word_data.items():
+                            if normalize(field_name) == normalize(word_field):
+                                preview_rows.append({
+                                    "Sheet Name": sheet_name,
+                                    "Field Name": field_name,
+                                    "Old Value": value_cell.value if value_cell.value else "",
+                                    "New Extracted Value": word_value
+                                })
+                                break
 
     # Step 4: Show Preview
     if preview_rows:
@@ -346,10 +356,10 @@ if docx_file and excel_file:
                     field_col_idx = header_row.index("Field") + 1
                 value_col_idx = header_row.index("Values") + 1
 
-                # Find the row
+                # Find the row again
                 for row in range(2, ws.max_row + 1):
                     field_cell = ws.cell(row=row, column=field_col_idx)
-                    if field_cell.value and str(field_cell.value).strip() == match["Field Name"]:
+                    if field_cell.value and normalize(field_cell.value) == normalize(match["Field Name"]):
                         value_cell = ws.cell(row=row, column=value_col_idx)
                         value_cell.value = match["New Extracted Value"]
                         break
