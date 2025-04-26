@@ -247,40 +247,32 @@ from io import BytesIO
 import re
 from openpyxl import load_workbook
 
-# Set Streamlit page config
-st.set_page_config(page_title="Self-QC Automation - Final Working", layout="wide")
+st.set_page_config(page_title="Self-QC Automation - Correct Table Reading", layout="wide")
 
-# Function to extract fields from Word document
+# Function to extract fields properly from Word TABLE only
 def extract_fields_from_word(file):
     doc = Document(file)
-    text = ""
-    for p in doc.paragraphs:
-        text += p.text + "\n"
+    extracted = {}
     for table in doc.tables:
         for row in table.rows:
-            text += "\t".join(cell.text.strip() for cell in row.cells) + "\n"
-
-    extracted = {}
-    lines = text.split("\n")
-    # Word file has proper Field-Value structure
-    for i in range(0, len(lines)-1, 2):
-        field = lines[i].strip()
-        value = lines[i+1].strip()
-        if field and value:
-            extracted[field] = value
+            if len(row.cells) >= 2:
+                field = row.cells[0].text.strip()
+                value = row.cells[1].text.strip()
+                if field and value:
+                    extracted[field] = value
     return extracted
 
-# Function to normalize strings
+# Normalize function
 def normalize(text):
     if text is None:
         return ""
     return str(text).strip().lower().replace("\u200b", "").replace("\xa0", " ")
 
 # Streamlit UI
-st.title("🔎 Self-QC Automation (Working with your files)")
-st.markdown("Upload your **Word** and **Excel**. Matching fields will be displayed, then you can download the updated Excel.")
+st.title("🔎 Self-QC Automation (Correct Table Extraction)")
+st.markdown("Upload your **Word (.docx)** and **Excel (.xlsx)**. Matching fields will be displayed before downloading the updated Excel.")
 
-# File Upload
+# File upload
 col1, col2 = st.columns(2)
 
 with col1:
@@ -361,7 +353,7 @@ if docx_file and excel_file:
             )
 
     else:
-        st.warning("⚠️ No matching fields found after checking. Please verify Word and Excel fields.")
+        st.warning("⚠️ No matching fields found after checking Word Table and Excel.")
 
 else:
     st.warning("👆 Please upload both Word (.docx) and Excel (.xlsx) files to proceed.")
