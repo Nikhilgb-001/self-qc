@@ -247,9 +247,16 @@ from io import BytesIO
 import re
 from openpyxl import load_workbook
 
-st.set_page_config(page_title="Self-QC Automation - Correct Table Reading", layout="wide")
+# Set Streamlit config
+st.set_page_config(page_title="Self-QC Automation - Final Fixed", layout="wide")
 
-# Function to extract fields properly from Word TABLE only
+# Proper normalization function
+def normalize(text):
+    if text is None:
+        return ""
+    return re.sub(r'\s+', ' ', str(text)).strip().lower()
+
+# Read fields from Word Table only
 def extract_fields_from_word(file):
     doc = Document(file)
     extracted = {}
@@ -258,21 +265,13 @@ def extract_fields_from_word(file):
             if len(row.cells) >= 2:
                 field = row.cells[0].text.strip()
                 value = row.cells[1].text.strip()
-                if field and value:
-                    extracted[field] = value
+                if field:
+                    extracted[normalize(field)] = value
     return extracted
 
-# Normalize function
-def normalize(text):
-    if text is None:
-        return ""
-    return str(text).strip().lower().replace("\u200b", "").replace("\xa0", " ")
-
 # Streamlit UI
-st.title("🔎 Self-QC Automation (Correct Table Extraction)")
-st.markdown("Upload your **Word (.docx)** and **Excel (.xlsx)**. Matching fields will be displayed before downloading the updated Excel.")
+st.title("🔎 Self-QC Automation (Final Fix - Accurate Match)")
 
-# File upload
 col1, col2 = st.columns(2)
 
 with col1:
@@ -281,9 +280,10 @@ with col2:
     excel_file = st.file_uploader("📑 Upload Excel Checklist (.xlsx)", type=["xlsx"])
 
 if docx_file and excel_file:
+    # Step 1: Extract fields from Word
     word_data = extract_fields_from_word(docx_file)
 
-    # Load Excel file
+    # Step 2: Read Excel
     output = BytesIO()
     output.write(excel_file.read())
     output.seek(0)
@@ -291,7 +291,7 @@ if docx_file and excel_file:
 
     preview_rows = []
 
-    # Match and Prepare Preview
+    # Step 3: Try matching across sheets
     for sheet_name in workbook.sheetnames:
         if sheet_name.lower() == "notification email":
             continue
@@ -308,18 +308,17 @@ if docx_file and excel_file:
                 manual_cell = ws.cell(row=row, column=manual_val_col_idx)
 
                 if field_cell.value:
-                    field_name = str(field_cell.value).strip()
-                    for word_field, word_value in word_data.items():
-                        if normalize(field_name) == normalize(word_field):
-                            preview_rows.append({
-                                "Sheet Name": sheet_name,
-                                "Field Name": field_name,
-                                "Old Manual Value": manual_cell.value if manual_cell.value else "",
-                                "New Extracted Value": word_value
-                            })
-                            break
+                    normalized_field_excel = normalize(field_cell.value)
 
-    # Preview the matches
+                    if normalized_field_excel in word_data:
+                        preview_rows.append({
+                            "Sheet Name": sheet_name,
+                            "Field Name": field_cell.value,
+                            "Old Manual Value": manual_cell.value if manual_cell.value else "",
+                            "New Extracted Value": word_data[normalized_field_excel]
+                        })
+
+    # Step 4: Preview
     if preview_rows:
         st.success(f"✅ Found {len(preview_rows)} matching fields!")
 
@@ -327,7 +326,6 @@ if docx_file and excel_file:
         st.dataframe(preview_df, use_container_width=True)
 
         if st.button("🚀 Apply Changes and Download Updated Excel"):
-            # Apply updates
             for match in preview_rows:
                 ws = workbook[match["Sheet Name"]]
                 headers = [cell.value for cell in ws[1]]
@@ -353,7 +351,7 @@ if docx_file and excel_file:
             )
 
     else:
-        st.warning("⚠️ No matching fields found after checking Word Table and Excel.")
+        st.warning("⚠️ No matching fields found. Please verify Field Names exactly match.")
 
 else:
     st.warning("👆 Please upload both Word (.docx) and Excel (.xlsx) files to proceed.")
