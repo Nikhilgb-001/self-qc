@@ -4,6 +4,10 @@ from docx import Document
 from io import BytesIO
 import re
 from openpyxl import load_workbook
+
+# --- SETTINGS ---
+st.set_page_config(page_title="Automated Agreement Validation System", layout="centered")
+
 hide_streamlit_style = """
             <style>
             #MainMenu {visibility: hidden;}
@@ -13,8 +17,7 @@ hide_streamlit_style = """
             """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# --- SETTINGS ---
-st.set_page_config(page_title="Automated Agreement Validation System", layout="centered")
+
 
 # Normalize function
 def normalize(text):
