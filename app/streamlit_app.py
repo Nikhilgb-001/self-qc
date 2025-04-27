@@ -688,7 +688,7 @@ with col1:
     docx_file = st.file_uploader("Upload Agreement Document (.docx)", type=["docx"], key="word_upload")
 
 with col2:
-    st.image('app/excel.jpeg', width=50)
+    st.image('app/Excel.jpeg', width=50)
     excel_file = st.file_uploader("Upload Agreement Masterfile (.xlsx)", type=["xlsx"], key="excel_upload")
 
 # Processing logic
