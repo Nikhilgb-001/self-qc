@@ -704,7 +704,7 @@ if docx_file and excel_file:
         preview_rows = []
 
         for sheet_name in workbook.sheetnames:
-            if sheet_name.lower() in ["no exchange", "termination"]:
+            if sheet_name.lower() in ["NO EXCHANGE", "TERMINATION"]:
                 continue
 
             ws = workbook[sheet_name]
