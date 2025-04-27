@@ -704,7 +704,7 @@ if docx_file and excel_file:
         preview_rows = []
 
         for sheet_name in workbook.sheetnames:
-            if sheet_name.lower() == "notification email":
+            if sheet_name.lower() == ["notification email", "no exchange", "termination"]:
                 continue
 
             ws = workbook[sheet_name]
