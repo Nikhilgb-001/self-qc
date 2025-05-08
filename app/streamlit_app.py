@@ -41,7 +41,7 @@ def extract_fields_from_word(file):
 # --- UI START ---
 
 # Company Logo
-st.image('app/teva.jpeg', width=150)
+st.image('app/teva.png', width=150)
 
 st.markdown(
     """
